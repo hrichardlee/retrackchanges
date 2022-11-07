@@ -1,32 +1,34 @@
-import flask
-import docxlib
+import base64
 import io
-import os
+import json
 
-app = flask.Flask(__name__, static_url_path='')
+import docxlib
 
-
-@app.route('/api/get_changes_metadata', methods=['POST'])
-def get_changes_metadata():
-    file = flask.request.files['file']
-    metadata = docxlib.get_changes_metadata(file)
-    return flask.jsonify(metadata)
-
-
-@app.route('/api/remove_timestamps', methods=['POST'])
-def remove_timestamps():
-    docx = flask.request.files['file']
-    b = io.BytesIO()
-    docxlib.remove_comment_timestamps(docx, b)
-    b.seek(0)
-    filename, ext = os.path.splitext(docx.filename)
-    newname = filename + '-notimestamps' + ext
-    return flask.send_file(
-        b,
-        mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        as_attachment=True,
-        attachment_filename=newname)
-
-
-if __name__ == "__main__":
-    app.run()
+def lambda_handler(event, context):
+    if event["requestContext"]["http"]["method"].upper() == "OPTIONS":
+        return {
+            'statusCode': 200,
+            'headers': {
+                'Access-Control-Allow-Headers': '*',
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'OPTIONS,POST,GET'
+            },
+            'body': json.dumps('Hello from Lambda!')
+        }
+    elif event["requestContext"]["http"]["method"].upper() == "POST":
+        with io.BytesIO(base64.b64decode(event["body"])) as inf, io.BytesIO() as outf:
+            docxlib.remove_comment_timestamps(inf, outf)
+            outf.seek(0)
+            return {
+                "statusCode": 200,
+                "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "body": base64.b64encode(outf.getvalue()),
+                "isBase64Encoded": True,
+                'headers': {
+                    'Access-Control-Allow-Headers': '*',
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Methods': 'OPTIONS,POST,GET'
+                },
+            }
+    
+    raise ValueError(f"Unexpected: {event}")

@@ -1,8 +1,0 @@
-scp -r retrackchanges/ root@hrichardlee.com:/var/sites/retrackchanges/
-scp deployment/retrackchanges.conf root@hrichardlee.com:/etc/init/
-
-scp deployment/retrackchanges-nginx root@hrichardlee.com:/etc/nginx/sites-available/
-
-ln -s /etc/nginx/sites-available/retrackchanges-nginx /etc/nginx/sites-enabled/retrackchanges-nginx
-
-service nginx reload

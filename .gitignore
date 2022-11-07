@@ -17,4 +17,6 @@ retrackChanges/app/static/app/*.js
 testdata/
 db.sqlite3
 
+# venv and .pyc
+retrackChanges/.venv
 *.pyc

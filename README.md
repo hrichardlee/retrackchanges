@@ -1,1 +1,1 @@
-retrackchanges2
+RetrackChanges is a tool for removing the timestamps from comments on Word documents

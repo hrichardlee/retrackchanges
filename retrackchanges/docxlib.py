@@ -5,11 +5,18 @@ import io
 import itertools
 
 namespace = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
+comment_tag = namespace + "comment"
 author_attrib = namespace + 'author'
 date_attrib = namespace + 'date'
+
+namespace_extensible = '{http://schemas.microsoft.com/office/word/2018/wordml/cex}'
+comment_extensible_tag = namespace_extensible + "commentExtensible"
+date_extensible_attrib = namespace_extensible + 'dateUtc'
+
 date_format = '%Y-%m-%dT%H:%M:%SZ'
 doc_filename = 'word/document.xml'
 comments_filename = 'word/comments.xml'
+comments_extensible_filename = 'word/commentsExtensible.xml'
 
 
 _CHANGE_TYPE_TO_FILENAME = {
@@ -19,9 +26,19 @@ _CHANGE_TYPE_TO_FILENAME = {
 
 
 def remove_comment_timestamps(inf, outf):
-    modify(inf, outf,
-           lambda info: info.filename == doc_filename or info.filename == comments_filename,
-           lambda info, xmltree: _remove_comment_timestamps(xmltree))
+    modify(
+        inf, outf,
+        [
+            (
+                lambda info: info.filename == doc_filename or info.filename == comments_filename,
+                lambda info, xmltree: _remove_comment_timestamps(xmltree)
+            ),
+            (
+                lambda info: info.filename == comments_extensible_filename,
+                lambda info, xmltree: _remove_comment_timestamps_extensible(xmltree)
+            )
+        ]
+    )
 
 
 def set_comment_timestamps(inf, outf, timestamps):
@@ -32,12 +49,16 @@ def set_comment_timestamps(inf, outf, timestamps):
         filename: [t[2] for t in group] for (filename, group) in
         itertools.groupby(timestamps, lambda t: _CHANGE_TYPE_TO_FILENAME[t[0]])
     }
-    modify(inf, outf,
-           lambda info: info.filename in timestamps_per_file,
+    modify(
+        inf, outf,
+        [
+            (lambda info: info.filename in timestamps_per_file,
            lambda info, xmltree: _set_comment_timestamps(xmltree, timestamps_per_file[info.filename]))
+        ]
+    )
 
 
-def modify(inf, outf, predicate, transform):
+def modify(inf, outf, predicate_transforms):
     """
     inf is a file-like object or filename representing a docx,
     outf is a file-like object or filename that will be written to
@@ -48,13 +69,16 @@ def modify(inf, outf, predicate, transform):
             zipfile.ZipFile(outf, mode='w') as outzipfile:
         for info in inzipfile.infolist():
             with inzipfile.open(info.filename) as f:
-                if predicate(info):
-                    xmltree = etree.parse(f)
-                    transform(info, xmltree)
-                    with io.BytesIO() as buffer:
-                        xmltree.write(buffer, encoding='UTF-8', xml_declaration=True)
-                        result = buffer.getvalue()
-                else:
+                result = None
+                for predicate, transform in predicate_transforms:
+                    if predicate(info):
+                        xmltree = etree.parse(f)
+                        transform(info, xmltree)
+                        with io.BytesIO() as buffer:
+                            xmltree.write(buffer, encoding='UTF-8', xml_declaration=True)
+                            result = buffer.getvalue()
+                
+                if result is None:
                     result = f.read()
                     
                 outzipfile.writestr(info, result)
@@ -103,4 +127,10 @@ def _remove_comment_timestamps(document, authors=None):
 
 def _get_comments(document):
     return (el for el in document.iter()
-            if date_attrib in el.attrib and author_attrib in el.attrib)
+            if el.tag == comment_tag and date_attrib in el.attrib and author_attrib in el.attrib)
+
+
+def _remove_comment_timestamps_extensible(document, authors=None):
+    for el in document.iter():
+        if el.tag == comment_extensible_tag and date_extensible_attrib in el.attrib:
+            del el.attrib[date_extensible_attrib]
